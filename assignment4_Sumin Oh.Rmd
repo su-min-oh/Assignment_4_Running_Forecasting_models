@@ -1,0 +1,168 @@
+---
+title: "Assignment 4"
+author: "Sumin Oh"
+date: "2024-10-05"
+output: html_document
+---
+
+## 0. import excel file and designate rows, columns
+
+```{r setup}
+
+library(fpp)
+library(fpp2)
+library(TTR)
+library(readxl)
+
+paxdata <- read.csv("/Users/suminoh/Downloads/paxdata.csv",header=FALSE)
+ts_data <- ts(paxdata, start = c(2003, 1), frequency = 12)
+
+```
+
+
+## 1. Forecast, understand, and explain the models
+
+```{r}
+
+plot(ts_data)
+# The graph shows a clear seasonal pattern in the data, with a noticeable drop during the COVID-19 crisis around 2020, followed by a strong recovery, eventually surpassing pre-pandemic levels.
+
+acf(ts_data)
+# I could find out that my data has high correlation within the first 6 months, indicating that recent data points are closely related to each other. However, after 6 months mark, the autocorrelation decreases significantly, suggesting that data points beyond this point become less correlated with earlier ones.
+
+#Decomposition
+ets_forecast <- ets(ts_data)
+plot(ets_forecast)
+# What I found interesting here is the seasonality. Even during the COVID-19 period, a clear seasonal pattern persisted.
+```
+
+
+#### (1) ETS Forecast
+```{r}
+# Since this model uses level, trend, seasonality to forecast, the figure has many ups and downs, showing similar pattern with the previous years.
+
+forecast_ets <- forecast.ets(ets_forecast, h=12)
+plot(forecast_ets)
+
+```
+
+
+#### (2) Mean Forecast
+```{r}
+# It forecasts the 12-term period (1 year in my case) number of passengers based on the average value of the given data. The forecasted values are expected to remain consistent throughout the forecast period.
+mean_forecast <- meanf(ts_data,12)
+plot(mean_forecast)
+```
+
+#### (3) Naive Forecast
+```{r}
+# It forecasts based on the value of the last term, meaning it essentially repeats the most recent value for all 12 forecasted terms.
+naive_forecast <- naive(ts_data,12)
+plot(naive_forecast)
+```
+
+#### (4) Random Walk Forecast
+```{r}
+# Since the basic random walk forecast is similar to the Naive forecast, I added drift to capture the gradual changes in the forecast.
+rwf_forecast <- rwf(ts_data,12, drift=TRUE)
+plot(rwf_forecast)
+```
+
+#### (5) Seasonal Naive Forecast
+```{r}
+# Seasonal factors were added to the Naive forecast. Looking at the plot, we can clearly see that the forecast now reflects seasonality, with a pattern similar to that of previous years.
+snaive_forecast <- snaive(ts_data,12)
+plot(snaive_forecast)
+```
+
+#### (6) Moving Average Forecast
+```{r}
+# I set the moving average to 6 months because reflecting 12 months would include Sep 2022 to Sep 2023, which is still affected by the impact of COVID-19. Using that 6-month moving average, I then forecasted for the next 12 months.
+
+MA6 <- ma(ts_data,order=6)
+MA6_clean <- na.omit(MA6)
+MA6_forecast <- forecast(MA6_clean,h=12)
+
+plot(MA6_forecast)
+```
+
+#### (7) Holt-Winters
+```{r}
+# Since this model incorporates level, trend, and seasonality, its forecast line showed the most fluctuations compared to other models. In the chart, I tried to compare the Holt-Winters models with and without these components. The chart clearly demonstrates that seasonality had a significant impact on the forecast values.
+
+HW <- HoltWinters(ts_data)
+HW_forecast <- forecast(HW, h=12)
+
+HW_notrend <-HoltWinters(ts_data, gamma=FALSE)
+HW_forecast_notrend <-forecast(HW_notrend,h=12)
+
+HW_level <-HoltWinters(ts_data,beta=FALSE, gamma=FALSE)
+HW_forecast_level <-forecast(HW_level,h=12)
+
+plot(HW)
+lines(HW_forecast$mean,col="purple")
+lines(HW_forecast_level$mean,col="blue")
+lines(HW_forecast_notrend$mean,col="green")
+
+```
+
+## 2. Plot the time series and different model forecasts in one chart.
+```{r}
+plot(ts_data,main="Zoomed Forecast,2020-2025",xlim=c(2020,2025), xlab = "Year", ylab = "Number of Passengers")
+lines(forecast_ets$mean,col="brown",lwd=2)
+lines(mean_forecast$mean,col="blue",lwd=2)
+lines(naive_forecast$mean,col="red2",lwd=2)
+lines(rwf_forecast$mean,col="green",lwd=2)
+lines(snaive_forecast$mean,col="skyblue",lwd=2)
+lines(MA6_forecast$mean,col="pink",lwd=2)
+lines(HW_forecast$mean,col="purple",lwd=2)
+```
+
+## 3. Pick an accuracy measure, compare models, and state the best model based on the accuracy comparison
+```{r}
+# I have chosen MAPE as the accuracy measure because, given the large values in my dataset, it's more intuitive to compare errors as percentages. This allows for a clearer understanding of the relative size of the errors across different models.
+
+ets_accuracy <- accuracy(forecast_ets)
+ets_mape <- ets_accuracy["Training set","MAPE"]
+
+mean_accuracy <- accuracy(mean_forecast)
+mean_mape <- mean_accuracy["Training set","MAPE"]
+
+naive_accuracy <- accuracy(naive_forecast)
+naive_mape <- naive_accuracy["Training set","MAPE"]
+
+rwf_accuracy <- accuracy(rwf_forecast)
+rwf_mape <- rwf_accuracy["Training set","MAPE"]
+
+snaive_accuracy <- accuracy(snaive_forecast)
+snaive_mape <- snaive_accuracy["Training set","MAPE"]
+
+MA_accuracy <- accuracy(MA6_forecast)
+MA_mape <- MA_accuracy["Training set","MAPE"]
+
+HW_accuracy <- accuracy(HW_forecast)
+HW_mape <- HW_accuracy["Training set","MAPE"]
+
+mape.comparison <- data.frame(model=c("ets","mean","naive","rwf","snaive","MA","HW"),MAPE=c(ets_mape,mean_mape,naive_mape,rwf_mape,snaive_mape,MA_mape,HW_mape))
+
+print(mape.comparison)
+
+# The Moving Average Forecast model has the lowest MAPE at 1.8%, followed by the ets model at 7.38%. Additionally, I used MPE to assess the bias of each model.
+
+ets_mpe <- ets_accuracy["Training set","MPE"]
+mean_mpe <- mean_accuracy["Training set","MPE"]
+naive_mpe <- naive_accuracy["Training set","MPE"]
+rwf_mpe <- rwf_accuracy["Training set","MPE"]
+snaive_mpe <- snaive_accuracy["Training set","MPE"]
+MA_mpe <- MA_accuracy["Training set","MPE"]
+HW_mpe <- HW_accuracy["Training set","MPE"]
+
+mpe.comparison <- data.frame(model=c("ets","mean","naive","rwf","snaive","MA","HW"),MPE=c(ets_mpe,mean_mpe,naive_mpe,rwf_mpe,snaive_mpe,MA_mpe,HW_mpe))
+
+print(mpe.comparison)
+
+# The Moving Average model's MPE was close to 0, indicating that the forecast is highly accurate. The ets model had an MPE of -3.69%, meaning it overestimates the values by 3.69%. Therefore, I concluded that the Moving Average model is the best forecast model in this case.
+
+
+```
+
